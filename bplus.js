@@ -54,25 +54,35 @@ class BPlusTree {
             this.insertNonFull(node.children[i], key);
         }
     }
-
     splitChild(parent, index) {
-        const node = parent.children[index];
-        const newNode = new BPlusTreeNode(node.isLeaf);
-        const mid = Math.floor(this.maxKeys / 2);
+            const node = parent.children[index];
+            const newNode = new BPlusTreeNode(node.isLeaf);
+            const mid = Math.floor((this.maxKeys + 1) / 2); // +1 ensures even splits
 
-        parent.keys.splice(index, 0, node.keys[mid]);
-        parent.children.splice(index + 1, 0, newNode);
+            if (node.isLeaf) {
+                // Split the keys for leaf
+                newNode.keys = node.keys.splice(mid); // Take the right half
+                const promoteKey = newNode.keys[0];   // First key of new node to promote
 
-        newNode.keys = node.keys.splice(mid + 1);
-        if (!node.isLeaf) {
-            newNode.children = node.children.splice(mid + 1);
-        } else {
-            newNode.next = node.next;
-            node.next = newNode;
+                // Link the new leaf
+                newNode.next = node.next;
+                node.next = newNode;
+
+                // Insert the promoteKey into parent (but do NOT remove from leaf)
+                parent.keys.splice(index, 0, promoteKey);
+                parent.children.splice(index + 1, 0, newNode);
+            } else {
+                // Internal node split logic
+                const promoteKey = node.keys[mid];
+
+                newNode.keys = node.keys.splice(mid + 1); // right part (excluding mid)
+                newNode.children = node.children.splice(mid + 1); // right children
+                node.keys = node.keys.slice(0, mid); // left keys
+
+                parent.keys.splice(index, 0, promoteKey);
+                parent.children.splice(index + 1, 0, newNode);
+            }
         }
-
-        node.keys = node.keys.slice(0, mid);
-    }
 
     search(key) {
         return this._search(this.root, key);
@@ -123,10 +133,21 @@ function loadWordsFromFile(filepath, tree) {
     }
 
     const data = fs.readFileSync(filepath, 'utf-8');
-    const words = data.split(/\r?\n/).filter(Boolean);
-    words.forEach(word => tree.insert(word.trim()));
+    const words = data.split(/\r?\n/).map(w => w.trim()).filter(Boolean);
+
+    const start = process.hrtime(); // start timer
+
+    words.forEach(word => {
+        tree.insert(word);
+    });
+
+    const elapsed = process.hrtime(start); // stop timer
+    const elapsedMs = (elapsed[0] * 1000 + elapsed[1] / 1e6).toFixed(3);
+
     console.log(`✅ Loaded ${words.length} words into the B+ Tree.`);
+    console.log(`⏱️ Time Consumed: ${elapsedMs} ms`);
 }
+
 
 // Create tree and load words
 const tree = new BPlusTree(4);
@@ -149,13 +170,22 @@ function showMenu() {
     rl.question(`Choose an option (1-4): `, choice => {
         switch (choice.trim()) {
             case '1':
-                rl.question('🔍 Enter word to search: ', word => {
-                    const found = tree.search(word.trim());
+                rl.question('🔍 Enter the word to search: ', word => {
+                    const target = word.trim();
+
+                    const start = process.hrtime(); 
+                    const found = tree.search(target); 
+                    const elapsed = process.hrtime(start); 
+
+                    const elapsedMs = (elapsed[0] * 1000 + elapsed[1] / 1e6).toFixed(6); 
+
                     if (found) {
-                        console.log(`✅ Word "${word}" found.`);
+                        console.log(`✅ Word "${target}" found.`);
                     } else {
-                        console.log(`❌ Sorry, "${word}" was not found.`);
+                        console.log(`❌ Word "${target}" not found.`);
                     }
+
+                    console.log(`⏱️ Search time: ${elapsedMs} ms`);
                     showMenu();
                 });
                 break;
